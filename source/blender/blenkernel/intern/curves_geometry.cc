@@ -679,6 +679,7 @@ Span<float3> CurvesGeometry::evaluated_positions() const
 
 Span<float3> CurvesGeometry::evaluated_tangents() const
 {
+
   const bke::CurvesGeometryRuntime &runtime = *this->runtime;
   runtime.evaluated_tangent_cache.ensure([&](Vector<float3> &r_data) {
     const OffsetIndices<int> evaluated_points_by_curve = this->evaluated_points_by_curve();
@@ -688,15 +689,41 @@ Span<float3> CurvesGeometry::evaluated_tangents() const
     r_data.resize(this->evaluated_points_num());
     MutableSpan<float3> tangents = r_data;
 
-    threading::parallel_for(this->curves_range(), 128, [&](IndexRange curves_range) {
-      for (const int curve_index : curves_range) {
-        const IndexRange evaluated_points = evaluated_points_by_curve[curve_index];
-        curves::poly::calculate_tangents(evaluated_positions.slice(evaluated_points),
-                                         cyclic[curve_index],
-                                         tangents.slice(evaluated_points));
-      }
-    });
+    bool tangent_smoothing_enabled = true;
+    if (tangent_smoothing_enabled && has_curve_with_type(CURVE_TYPE_BEZIER)) {
+      VArray<int> resolution_by_curve = resolution();
+      VArraySpan<int8_t> handle_type_attributes_left;
+      handle_type_attributes_left = handle_types_left();
+      VArraySpan<int8_t> handle_type_attributes_right;
+      handle_type_attributes_right = handle_types_right();
 
+      threading::parallel_for(this->curves_range(), 128, [&](IndexRange curves_range) {
+        for (const int curve_index : curves_range) {
+          const IndexRange evaluated_points = evaluated_points_by_curve[curve_index];
+          const IndexRange points = points_by_curve()[curve_index];
+          curves::poly::calculate_tangents(evaluated_positions.slice(evaluated_points),
+                                           cyclic[curve_index],
+                                           tangents.slice(evaluated_points));
+          curves::bezier::smooth_tangents(cyclic[curve_index],
+                                          tangents.slice(evaluated_points),
+                                          handle_type_attributes_left.slice(points),
+                                          handle_type_attributes_right.slice(points),
+                                          resolution_by_curve[curve_index]);
+        }
+      });
+
+    }
+    else {
+      threading::parallel_for(this->curves_range(), 128, [&](IndexRange curves_range) {
+        for (const int curve_index : curves_range) {
+          const IndexRange evaluated_points = evaluated_points_by_curve[curve_index];
+          curves::poly::calculate_tangents(evaluated_positions.slice(evaluated_points),
+                                           cyclic[curve_index],
+                                           tangents.slice(evaluated_points));
+        }
+      });
+    }
+    
     /* Correct the first and last tangents of non-cyclic Bezier curves so that they align with
      * the inner handles. This is a separate loop to avoid the cost when Bezier type curves are
      * not used. */

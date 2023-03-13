@@ -648,6 +648,16 @@ void calculate_evaluated_positions(Span<float3> positions,
  */
 void interpolate_to_evaluated(GSpan src, OffsetIndices<int> evaluated_offsets, GMutableSpan dst);
 
+/**
+ * Lerp tangents towards values at handles with non continuous curvature (FREE and VECTOR handle types)
+ */
+void smooth_tangents(bool is_cyclic,
+                     MutableSpan<float3> tangents,
+                     const Span<int8_t> handle_types_left,
+                     const Span<int8_t> handle_types_right,
+                     const int resolution);
+
+
 }  // namespace bezier
 
 /** \} */

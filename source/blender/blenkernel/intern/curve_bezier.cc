@@ -334,4 +334,54 @@ void interpolate_to_evaluated(const GSpan src,
   });
 }
 
+void smooth_tangents(const bool is_cyclic,
+                     MutableSpan<float3> tangents,
+                     const Span<int8_t> handle_types_left,
+                     const Span<int8_t> handle_types_right,
+                     const int resolution)
+{
+  const int size = handle_types_left.size();
+  if (size == 1) {
+    return;
+  }
+
+  // TODO: compile in debug and check this assert runs
+  BLI_assert((size - 1) * resolution + 1 == tangents.size());
+
+  for (const int segment_index : IndexRange(size - 1)) {
+    // TODO: find a way to combine these two ifs into something neater
+    if (point_is_sharp(handle_types_left, handle_types_right, segment_index)) {
+
+      const int64_t starting_tangent_index = static_cast<int64_t>(segment_index) * resolution;
+      const float3 &interp_target = tangents[starting_tangent_index];
+      const float inv_resolution = 1.0f / (float)resolution;
+      for (const int local_point_index : IndexRange(1, resolution - 1)) {
+        const float3 tangent = tangents[starting_tangent_index + local_point_index];
+        const float lerp = inv_resolution * local_point_index;
+        tangents[starting_tangent_index + local_point_index] = math::normalize(
+            interp_target * (1 - lerp) + (tangent * lerp));
+      }
+    }
+    else if (point_is_sharp(handle_types_left, handle_types_right, segment_index + 1)) {
+      const int64_t starting_tangent_index = static_cast<int64_t>(segment_index) * resolution;
+      const int64_t ending_tangent_index = starting_tangent_index + resolution;
+      const float3 &interp_target = tangents[ending_tangent_index];
+      const float inv_resolution = 1.0f / (float)resolution;
+      for (const int local_point_index : IndexRange(1, resolution - 1)) {
+        const float3 tangent = tangents[starting_tangent_index + local_point_index];
+        const float lerp = inv_resolution * local_point_index;
+        tangents[starting_tangent_index + local_point_index] = math::normalize(
+            tangent * (1 - lerp) + (interp_target * lerp));
+      }
+    }
+  }
+
+  if (is_cyclic) {
+    // TODO: handle last segment for cyclical  
+  }
+  handle_types_left.print_as_lines("handles_left");
+  handle_types_right.print_as_lines("handles_right");
+}
+
+
 }  // namespace blender::bke::curves::bezier
