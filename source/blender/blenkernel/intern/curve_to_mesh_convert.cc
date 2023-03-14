@@ -177,14 +177,17 @@ static void fill_mesh_positions(const int main_point_num,
                                 const Span<float3> tangents,
                                 const Span<float3> normals,
                                 const Span<float> radii,
-                                MutableSpan<float3> mesh_positions)
+                                MutableSpan<float3> mesh_positions,
+                                const bool apply_radius_in_one_direction)
 {
   if (profile_point_num == 1) {
     for (const int i_ring : IndexRange(main_point_num)) {
       float4x4 point_matrix = math::from_orthonormal_axes<float4x4>(
           main_positions[i_ring], normals[i_ring], tangents[i_ring]);
       if (!radii.is_empty()) {
-        point_matrix = math::scale(point_matrix, float3(radii[i_ring]));
+        float3 scale_factor = apply_radius_in_one_direction ? float3(radii[i_ring], 1.0f, 1.0f) :
+                                                              float3(radii[i_ring]);
+        point_matrix = math::scale(point_matrix, scale_factor);
       }
       mesh_positions[i_ring] = math::transform_point(point_matrix, profile_positions.first());
     }
@@ -194,7 +197,9 @@ static void fill_mesh_positions(const int main_point_num,
       float4x4 point_matrix = math::from_orthonormal_axes<float4x4>(
           main_positions[i_ring], normals[i_ring], tangents[i_ring]);
       if (!radii.is_empty()) {
-        point_matrix = math::scale(point_matrix, float3(radii[i_ring]));
+        float3 scale_factor = apply_radius_in_one_direction ? float3(radii[i_ring], 1.0f, 1.0f) :
+                                                              float3(radii[i_ring]);
+        point_matrix = math::scale(point_matrix, scale_factor);
       }
 
       const int ring_vert_start = i_ring * profile_point_num;
@@ -728,6 +733,7 @@ Mesh *curve_to_mesh_sweep(const CurvesGeometry &main,
   }
 
   foreach_curve_combination(curves_info, offsets, [&](const CombinationInfo &info) {
+    const bool apply_radius_in_one_direction = true;
     fill_mesh_positions(info.main_points.size(),
                         info.profile_points.size(),
                         main_positions.slice(info.main_points),
@@ -735,7 +741,8 @@ Mesh *curve_to_mesh_sweep(const CurvesGeometry &main,
                         tangents.slice(info.main_points),
                         normals.slice(info.main_points),
                         radii.is_empty() ? radii : radii.slice(info.main_points),
-                        positions.slice(info.vert_range));
+                        positions.slice(info.vert_range),
+                        apply_radius_in_one_direction);
   });
 
   SpanAttributeWriter<bool> sharp_edges;
